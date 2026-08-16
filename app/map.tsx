@@ -12,9 +12,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import MapView, { Marker, Polyline } from "react-native-maps";
+import MapView, { Marker, Polyline, Region } from "react-native-maps";
 import { db } from "../constants/firebase";
 import { useLanguage } from "../constants/langcontext";
+import { addRecentTrip } from "../constants/recentTrips";
 import { useTheme } from "../constants/ThemeContext";
 
 type Stop = {
@@ -35,7 +36,6 @@ type Route = {
   schedule?: string;
 };
 
-// Makati city-center default view
 const MAKATI_REGION = {
   latitude: 14.5547,
   longitude: 121.0244,
@@ -43,7 +43,57 @@ const MAKATI_REGION = {
   longitudeDelta: 0.06,
 };
 
-// Haversine distance in meters between two lat/lng points
+type StopWithRoute = {
+  stop: Stop;
+  route: Route;
+  isFirst: boolean;
+  isLast: boolean;
+};
+
+type StopCluster = {
+  key: string;
+  latitude: number;
+  longitude: number;
+  count: number;
+  items: StopWithRoute[];
+};
+
+const buildStopClusters = (
+  stopsWithRoute: StopWithRoute[],
+  region: Region,
+): StopCluster[] => {
+  const cellSize = Math.max(region.latitudeDelta * 0.12, 0.0008);
+  const buckets = new Map<string, StopCluster>();
+
+  stopsWithRoute.forEach((entry) => {
+    const lat = entry.stop.lat as number;
+    const lng = entry.stop.lng as number;
+    const cellX = Math.round(lng / cellSize);
+    const cellY = Math.round(lat / cellSize);
+    const key = `${cellX}_${cellY}`;
+
+    const existing = buckets.get(key);
+    if (existing) {
+      const newCount = existing.count + 1;
+      existing.latitude = (existing.latitude * existing.count + lat) / newCount;
+      existing.longitude =
+        (existing.longitude * existing.count + lng) / newCount;
+      existing.count = newCount;
+      existing.items.push(entry);
+    } else {
+      buckets.set(key, {
+        key,
+        latitude: lat,
+        longitude: lng,
+        count: 1,
+        items: [entry],
+      });
+    }
+  });
+
+  return Array.from(buckets.values());
+};
+
 const distanceMeters = (
   lat1: number,
   lng1: number,
@@ -75,19 +125,18 @@ export default function MapScreen() {
     latitude: number;
     longitude: number;
   } | null>(null);
+  const [currentRegion, setCurrentRegion] = useState<Region>(MAKATI_REGION);
   const autoTriggered = useRef(false);
 
   useEffect(() => {
     fetchRoutes();
   }, []);
 
-  // If we arrived here via the "Near Me" quick action, locate automatically once.
   useEffect(() => {
     if (nearMe === "true" && !autoTriggered.current) {
       autoTriggered.current = true;
       handleLocateMe();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nearMe]);
 
   const handleLocateMe = async () => {
@@ -132,8 +181,6 @@ export default function MapScreen() {
     }
   };
 
-  // Flattened list of every stop across all routes, each tagged with its
-  // parent route so the "near me" list can show which vehicle serves it.
   const allStopsWithRoute = routes.flatMap((route) =>
     (route.stops || [])
       .filter(
@@ -184,7 +231,6 @@ export default function MapScreen() {
     { key: "p2p", label: "P2P" },
   ];
 
-  // Case-insensitive match so "P2P" in Firestore matches the "p2p" filter key
   const filteredRoutes =
     selectedType === "all"
       ? routes
@@ -205,9 +251,6 @@ export default function MapScreen() {
     }
   };
 
-  // Only stops with real, valid numeric coordinates can be drawn.
-  // Guards against nulls, missing fields, and values stored as text in Firestore
-  // (e.g. "14.5605" instead of 14.5605), which is what caused the native crash.
   const validStops = (route: Route) =>
     (route.stops || []).filter(
       (s) =>
@@ -217,8 +260,6 @@ export default function MapScreen() {
         isFinite(s.lng),
     );
 
-  // Prefer the road-following path (from OSRM) if we have one; otherwise
-  // fall back to straight lines between stops so the route still draws.
   const getDrawablePath = (route: Route) => {
     const validPath = (route.path || []).filter(
       (p) =>
@@ -253,6 +294,15 @@ export default function MapScreen() {
             animated: true,
           },
         );
+
+        addRecentTrip({
+          origin: stops[0].name,
+          destination: stops[stops.length - 1].name,
+          detail: route.name,
+          fare: route.fare,
+        }).catch((error) =>
+          console.error("Error logging recent trip: ", error),
+        );
       }
     }
   };
@@ -261,6 +311,35 @@ export default function MapScreen() {
     ? filteredRoutes.filter((r) => r.id === selectedRouteId)
     : filteredRoutes;
 
+  const overviewStopsWithRoute: StopWithRoute[] = !selectedRouteId
+    ? routesToDraw.flatMap((route) => {
+        const stops = validStops(route);
+        return stops.map((stop, index) => ({
+          stop,
+          route,
+          isFirst: index === 0,
+          isLast: index === stops.length - 1,
+        }));
+      })
+    : [];
+
+  const stopClusters = !selectedRouteId
+    ? buildStopClusters(overviewStopsWithRoute, currentRegion)
+    : [];
+
+  const handleClusterPress = (cluster: StopCluster) => {
+    if (!mapRef) return;
+    mapRef.animateToRegion(
+      {
+        latitude: cluster.latitude,
+        longitude: cluster.longitude,
+        latitudeDelta: Math.max(currentRegion.latitudeDelta / 3, 0.002),
+        longitudeDelta: Math.max(currentRegion.longitudeDelta / 3, 0.002),
+      },
+      400,
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.mapWrapper}>
@@ -268,6 +347,7 @@ export default function MapScreen() {
           ref={setMapRef}
           style={styles.map}
           initialRegion={MAKATI_REGION}
+          onRegionChangeComplete={setCurrentRegion}
         >
           {routesToDraw.map((route) => {
             const stops = validStops(route);
@@ -277,33 +357,77 @@ export default function MapScreen() {
             const drawablePath = getDrawablePath(route);
 
             return (
-              <View key={route.id}>
-                <Polyline
-                  coordinates={drawablePath}
-                  strokeColor={color}
-                  strokeWidth={4}
+              <Polyline
+                key={route.id}
+                coordinates={drawablePath}
+                strokeColor={color}
+                strokeWidth={4}
+              />
+            );
+          })}
+
+          {selectedRouteId &&
+            routesToDraw.map((route) => {
+              const stops = validStops(route);
+              const color = getTypeColor(route.type);
+              return stops.map((stop, index) => (
+                <Marker
+                  key={`${route.id}-${index}`}
+                  coordinate={{
+                    latitude: stop.lat as number,
+                    longitude: stop.lng as number,
+                  }}
+                  title={stop.name}
+                  description={route.name}
+                  pinColor={
+                    index === 0
+                      ? "#4caf50"
+                      : index === stops.length - 1
+                        ? "#e94560"
+                        : color
+                  }
                 />
-                {stops.map((stop, index) => (
+              ));
+            })}
+
+          {!selectedRouteId &&
+            stopClusters.map((cluster) => {
+              if (cluster.count === 1) {
+                const { stop, route, isFirst, isLast } = cluster.items[0];
+                const color = getTypeColor(route.type);
+                return (
                   <Marker
-                    key={`${route.id}-${index}`}
+                    key={cluster.key}
                     coordinate={{
-                      latitude: stop.lat as number,
-                      longitude: stop.lng as number,
+                      latitude: cluster.latitude,
+                      longitude: cluster.longitude,
                     }}
                     title={stop.name}
                     description={route.name}
-                    pinColor={
-                      index === 0
-                        ? "#4caf50"
-                        : index === stops.length - 1
-                          ? "#e94560"
-                          : color
-                    }
+                    pinColor={isFirst ? "#4caf50" : isLast ? "#e94560" : color}
                   />
-                ))}
-              </View>
-            );
-          })}
+                );
+              }
+              return (
+                <Marker
+                  key={cluster.key}
+                  coordinate={{
+                    latitude: cluster.latitude,
+                    longitude: cluster.longitude,
+                  }}
+                  onPress={() => handleClusterPress(cluster)}
+                >
+                  <View
+                    style={[
+                      styles.clusterBadge,
+                      { borderColor: colors.background },
+                    ]}
+                  >
+                    <Text style={styles.clusterBadgeText}>{cluster.count}</Text>
+                  </View>
+                </Marker>
+              );
+            })}
 
           {userLocation && (
             <Marker
@@ -369,7 +493,6 @@ export default function MapScreen() {
         </View>
       )}
 
-      {/* Filter Tabs */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -407,7 +530,6 @@ export default function MapScreen() {
         ))}
       </ScrollView>
 
-      {/* Route chips - tap to focus map on that route */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -482,6 +604,21 @@ const styles = StyleSheet.create({
     maxWidth: 200,
   },
   routeChipText: { fontSize: 12, fontWeight: "600" },
+  clusterBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#e94560",
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
+  clusterBadgeText: { color: "#fff", fontWeight: "bold", fontSize: 14 },
   locateButton: {
     position: "absolute",
     bottom: 16,

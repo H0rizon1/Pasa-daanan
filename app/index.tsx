@@ -1,5 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -9,11 +11,34 @@ import {
   View,
 } from "react-native";
 import { useLanguage } from "../constants/langcontext";
+import {
+  deleteRecentTrip,
+  getRecentTrips,
+  type RecentTrip,
+} from "../constants/recentTrips";
 import { useTheme } from "../constants/ThemeContext";
 
 export default function HomeScreen() {
   const { t, language, toggleLanguage } = useLanguage();
   const { theme, toggleTheme, colors } = useTheme();
+  const [recentTrips, setRecentTrips] = useState<RecentTrip[]>([]);
+
+  const loadRecentTrips = useCallback(() => {
+    getRecentTrips().then(setRecentTrips);
+  }, []);
+
+  // Refresh every time the Home screen comes back into focus, so a trip
+  // selected on the Map screen shows up here right away.
+  useFocusEffect(
+    useCallback(() => {
+      loadRecentTrips();
+    }, [loadRecentTrips]),
+  );
+
+  const handleDeleteRecentTrip = async (id: string) => {
+    const updated = await deleteRecentTrip(id);
+    setRecentTrips(updated);
+  };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -135,38 +160,51 @@ export default function HomeScreen() {
       <Text style={[styles.sectionTitle, { color: colors.text }]}>
         {t.recents}
       </Text>
-      <View
-        style={[
-          styles.recentCard,
-          {
-            backgroundColor: colors.cardSecondary,
-            borderLeftColor: colors.heading,
-          },
-        ]}
-      >
-        <Text style={[styles.recentRoute, { color: colors.text }]}>
-          Makati → Quezon City
-        </Text>
-        <Text style={[styles.recentDetails, { color: colors.subtitle }]}>
-          LRT-1 → MRT-3 → Jeepney · ₱45
-        </Text>
-      </View>
-      <View
-        style={[
-          styles.recentCard,
-          {
-            backgroundColor: colors.cardSecondary,
-            borderLeftColor: colors.heading,
-          },
-        ]}
-      >
-        <Text style={[styles.recentRoute, { color: colors.text }]}>
-          Taguig → Manila
-        </Text>
-        <Text style={[styles.recentDetails, { color: colors.subtitle }]}>
-          E-trike → LRT-1 · ₱28
-        </Text>
-      </View>
+      {recentTrips.length === 0 ? (
+        <View
+          style={[
+            styles.recentEmptyState,
+            { backgroundColor: colors.cardSecondary },
+          ]}
+        >
+          <Ionicons name="time-outline" size={22} color={colors.subtitle} />
+          <Text style={[styles.recentEmptyText, { color: colors.subtitle }]}>
+            {language === "en"
+              ? "No recent trips yet — pick a route on the map to get started."
+              : "Wala pang recent na biyahe — pumili ng ruta sa mapa para magsimula."}
+          </Text>
+        </View>
+      ) : (
+        recentTrips.map((trip) => (
+          <View
+            key={trip.id}
+            style={[
+              styles.recentCard,
+              {
+                backgroundColor: colors.cardSecondary,
+                borderLeftColor: colors.heading,
+              },
+            ]}
+          >
+            <View style={styles.recentCardContent}>
+              <Text style={[styles.recentRoute, { color: colors.text }]}>
+                {trip.origin} → {trip.destination}
+              </Text>
+              <Text style={[styles.recentDetails, { color: colors.subtitle }]}>
+                {trip.detail}
+                {typeof trip.fare === "number" ? ` · ₱${trip.fare}` : ""}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.recentDeleteButton}
+              onPress={() => handleDeleteRecentTrip(trip.id)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="trash-outline" size={18} color="#e94560" />
+            </TouchableOpacity>
+          </View>
+        ))
+      )}
     </ScrollView>
   );
 }
@@ -245,7 +283,21 @@ const styles = StyleSheet.create({
     marginHorizontal: 24,
     marginBottom: 12,
     borderLeftWidth: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
+  recentCardContent: { flex: 1 },
   recentRoute: { fontSize: 16, fontWeight: "bold", marginBottom: 4 },
   recentDetails: { fontSize: 13 },
+  recentDeleteButton: { padding: 4 },
+  recentEmptyState: {
+    borderRadius: 12,
+    padding: 20,
+    marginHorizontal: 24,
+    marginBottom: 12,
+    alignItems: "center",
+    gap: 8,
+  },
+  recentEmptyText: { fontSize: 13, textAlign: "center" },
 });
