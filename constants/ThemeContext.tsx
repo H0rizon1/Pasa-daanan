@@ -35,14 +35,14 @@ const darkColors = {
 const lightColors = {
   background: "#F5F5F5",
   card: "#5ba3e0",
-  cardSecondary: "#16213e",
+  cardSecondary: "#ffffff",
   heading: "#FF8C42",
-  text: "#ffffff",
-  subtitle: "#aaa",
+  text: "#1a1a2e",
+  subtitle: "#666666",
   border: "#FF8C42",
-  cardBorder: "transparent",
-  input: "#e8e8e8",
-  placeholder: "#aaa",
+  cardBorder: "#e0e0e0",
+  input: "#ffffff",
+  placeholder: "#999999",
 };
 
 const ThemeContext = createContext<ThemeContextType>({

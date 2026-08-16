@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { useLanguage } from "../constants/langcontext";
+import { useTheme } from "../constants/ThemeContext";
 
 type Trip = {
   id: string;
@@ -23,6 +24,7 @@ type Trip = {
 
 export default function PlannerScreen() {
   const { language } = useLanguage();
+  const { theme, colors } = useTheme();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [origin, setOrigin] = useState("");
@@ -31,6 +33,8 @@ export default function PlannerScreen() {
   const [selectedTime, setSelectedTime] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+
+  const dividerColor = theme === "dark" ? "#333333" : "#dddddd";
 
   const formatDate = (date: Date) =>
     date.toLocaleDateString("en-PH", {
@@ -87,12 +91,12 @@ export default function PlannerScreen() {
   ];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>
+        <Text style={[styles.title, { color: colors.heading }]}>
           {language === "en" ? "My Trips" : "Mga Biyahe Ko"}
         </Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.subtitle, { color: colors.subtitle }]}>
           {language === "en"
             ? "Plan your route ahead of time"
             : "Planuhin ang iyong ruta nang maaga"}
@@ -105,13 +109,13 @@ export default function PlannerScreen() {
       >
         {trips.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="map-outline" size={60} color="#333" />
-            <Text style={styles.emptyText}>
+            <Ionicons name="map-outline" size={60} color={colors.subtitle} />
+            <Text style={[styles.emptyText, { color: colors.text }]}>
               {language === "en"
                 ? "No trips planned yet"
                 : "Wala pang naplanong biyahe"}
             </Text>
-            <Text style={styles.emptySubtext}>
+            <Text style={[styles.emptySubtext, { color: colors.subtitle }]}>
               {language === "en"
                 ? "Tap the + button to add one!"
                 : "I-tap ang + para magdagdag!"}
@@ -119,27 +123,51 @@ export default function PlannerScreen() {
           </View>
         ) : (
           trips.map((trip) => (
-            <View key={trip.id} style={styles.tripCard}>
+            <View
+              key={trip.id}
+              style={[
+                styles.tripCard,
+                { backgroundColor: colors.cardSecondary },
+              ]}
+            >
               <View style={styles.tripInfo}>
                 <View style={styles.tripRow}>
                   <View style={styles.dotGreen} />
-                  <Text style={styles.tripLocation}>{trip.origin}</Text>
+                  <Text style={[styles.tripLocation, { color: colors.text }]}>
+                    {trip.origin}
+                  </Text>
                 </View>
-                <View style={styles.dottedLine} />
+                <View
+                  style={[styles.dottedLine, { backgroundColor: dividerColor }]}
+                />
                 <View style={styles.tripRow}>
                   <View style={styles.dotRed} />
-                  <Text style={styles.tripLocation}>{trip.destination}</Text>
+                  <Text style={[styles.tripLocation, { color: colors.text }]}>
+                    {trip.destination}
+                  </Text>
                 </View>
                 <View style={styles.tripDateTime}>
-                  <Ionicons name="calendar-outline" size={13} color="#888" />
-                  <Text style={styles.tripDateText}>{trip.date}</Text>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={13}
+                    color={colors.subtitle}
+                  />
+                  <Text
+                    style={[styles.tripDateText, { color: colors.subtitle }]}
+                  >
+                    {trip.date}
+                  </Text>
                   <Ionicons
                     name="time-outline"
                     size={13}
-                    color="#888"
+                    color={colors.subtitle}
                     style={{ marginLeft: 8 }}
                   />
-                  <Text style={styles.tripDateText}>{trip.time}</Text>
+                  <Text
+                    style={[styles.tripDateText, { color: colors.subtitle }]}
+                  >
+                    {trip.time}
+                  </Text>
                 </View>
               </View>
               <TouchableOpacity
@@ -166,22 +194,30 @@ export default function PlannerScreen() {
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
+          <View
+            style={[
+              styles.modalContent,
+              { backgroundColor: colors.cardSecondary },
+            ]}
+          >
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
               {language === "en" ? "Plan a Trip" : "Mag-plano ng Biyahe"}
             </Text>
 
-            <Text style={styles.inputLabel}>
+            <Text style={[styles.inputLabel, { color: colors.text }]}>
               {language === "en" ? "From" : "Mula sa"}
             </Text>
             <View
-              style={[styles.pickerContainer, { backgroundColor: "#1a1a2e" }]}
+              style={[
+                styles.pickerContainer,
+                { backgroundColor: colors.input },
+              ]}
             >
               <Picker
                 selectedValue={origin}
                 onValueChange={(value) => setOrigin(value)}
-                style={{ color: "#fff" }}
-                dropdownIconColor="#FF8C42"
+                style={{ color: colors.text }}
+                dropdownIconColor={colors.heading}
                 mode="dropdown"
               >
                 <Picker.Item label="Select current location..." value="" />
@@ -191,13 +227,16 @@ export default function PlannerScreen() {
               </Picker>
             </View>
             <View
-              style={[styles.pickerContainer, { backgroundColor: "#1a1a2e" }]}
+              style={[
+                styles.pickerContainer,
+                { backgroundColor: colors.input },
+              ]}
             >
               <Picker
                 selectedValue={destination}
                 onValueChange={(value) => setDestination(value)}
-                style={{ color: "#fff" }}
-                dropdownIconColor="#FF8C42"
+                style={{ color: colors.text }}
+                dropdownIconColor={colors.heading}
                 mode="dropdown"
               >
                 <Picker.Item label="Select destination..." value="" />
@@ -209,30 +248,36 @@ export default function PlannerScreen() {
 
             <View style={styles.dateTimeRow}>
               <View style={styles.dateTimeBlock}>
-                <Text style={styles.inputLabel}>
+                <Text style={[styles.inputLabel, { color: colors.subtitle }]}>
                   {language === "en" ? "Date" : "Petsa"}
                 </Text>
                 <TouchableOpacity
-                  style={styles.dateTimeButton}
+                  style={[
+                    styles.dateTimeButton,
+                    { backgroundColor: colors.input },
+                  ]}
                   onPress={() => setShowDatePicker(true)}
                 >
                   <Ionicons name="calendar-outline" size={16} color="#e94560" />
-                  <Text style={styles.dateTimeText}>
+                  <Text style={[styles.dateTimeText, { color: colors.text }]}>
                     {formatDate(selectedDate)}
                   </Text>
                 </TouchableOpacity>
               </View>
 
               <View style={styles.dateTimeBlock}>
-                <Text style={styles.inputLabel}>
+                <Text style={[styles.inputLabel, { color: colors.subtitle }]}>
                   {language === "en" ? "Time" : "Oras"}
                 </Text>
                 <TouchableOpacity
-                  style={styles.dateTimeButton}
+                  style={[
+                    styles.dateTimeButton,
+                    { backgroundColor: colors.input },
+                  ]}
                   onPress={() => setShowTimePicker(true)}
                 >
                   <Ionicons name="time-outline" size={16} color="#e94560" />
-                  <Text style={styles.dateTimeText}>
+                  <Text style={[styles.dateTimeText, { color: colors.text }]}>
                     {formatTime(selectedTime)}
                   </Text>
                 </TouchableOpacity>
@@ -266,10 +311,10 @@ export default function PlannerScreen() {
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={styles.cancelButton}
+                style={[styles.cancelButton, { backgroundColor: colors.input }]}
                 onPress={() => setModalVisible(false)}
               >
-                <Text style={styles.cancelText}>
+                <Text style={[styles.cancelText, { color: colors.subtitle }]}>
                   {language === "en" ? "Cancel" : "Kanselahin"}
                 </Text>
               </TouchableOpacity>
@@ -289,7 +334,6 @@ export default function PlannerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1a1a2e",
   },
   header: {
     padding: 24,
@@ -298,11 +342,9 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#ff8c42",
   },
   subtitle: {
     fontSize: 14,
-    color: "#888",
     marginTop: 4,
   },
   list: {
@@ -319,16 +361,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyText: {
-    color: "#555",
     fontSize: 18,
     fontWeight: "bold",
   },
   emptySubtext: {
-    color: "#444",
     fontSize: 14,
   },
   tripCard: {
-    backgroundColor: "#16213e",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -360,12 +399,10 @@ const styles = StyleSheet.create({
   dottedLine: {
     width: 2,
     height: 16,
-    backgroundColor: "#333",
     marginLeft: 4,
     marginVertical: 2,
   },
   tripLocation: {
-    color: "#fff",
     fontSize: 15,
     fontWeight: "600",
   },
@@ -376,7 +413,6 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tripDateText: {
-    color: "#888",
     fontSize: 12,
   },
   deleteButton: {
@@ -404,7 +440,6 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalContent: {
-    backgroundColor: "#16213e",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
@@ -413,21 +448,11 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 22,
     fontWeight: "bold",
-    color: "#fff",
     marginBottom: 8,
   },
   inputLabel: {
-    color: "#888",
     fontSize: 13,
     marginBottom: 4,
-  },
-  input: {
-    backgroundColor: "#1a1a2e",
-    color: "#fff",
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-    marginBottom: 8,
   },
   dateTimeRow: {
     flexDirection: "row",
@@ -438,7 +463,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dateTimeButton: {
-    backgroundColor: "#1a1a2e",
     borderRadius: 12,
     padding: 12,
     flexDirection: "row",
@@ -446,7 +470,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   dateTimeText: {
-    color: "#fff",
     fontSize: 13,
   },
   modalButtons: {
@@ -456,13 +479,11 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: "#1a1a2e",
     borderRadius: 12,
     padding: 14,
     alignItems: "center",
   },
   cancelText: {
-    color: "#888",
     fontWeight: "600",
   },
   confirmButton: {
