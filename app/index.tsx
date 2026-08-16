@@ -83,7 +83,9 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
-        <Text style={[styles.title, { color: colors.heading }]}>Pasada</Text>
+        <Text style={[styles.title, { color: colors.heading }]}>
+          Pasa-daanan
+        </Text>
         <Text style={[styles.subtitle, { color: colors.subtitle }]}>
           {t.app}
         </Text>
