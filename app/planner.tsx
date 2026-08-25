@@ -46,6 +46,15 @@ type RouteMatch = {
   destinationStop: Stop;
 };
 
+function parseDurationMinutes(duration: string): number | null {
+  const hourMatch = duration.match(/(\d+)\s*hr/i);
+  const minMatch = duration.match(/(\d+)\s*min/i);
+  const hours = hourMatch ? parseInt(hourMatch[1], 10) : 0;
+  const mins = minMatch ? parseInt(minMatch[1], 10) : 0;
+  if (!hourMatch && !minMatch) return null;
+  return hours * 60 + mins;
+}
+
 function findMatchingRoutes(
   routes: FirestoreRoute[],
   origin: string,
@@ -88,6 +97,8 @@ export default function PlannerScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   const [searchResults, setSearchResults] = useState<RouteMatch[] | null>(null);
+
+  const [sortMode, setSortMode] = useState<"fare" | "duration">("fare");
 
   const dividerColor = theme === "dark" ? "#333333" : "#dddddd";
 
@@ -134,11 +145,13 @@ export default function PlannerScreen() {
     setSelectedDate(new Date());
     setSelectedTime(new Date());
     setSearchResults(null);
+    setSortMode("fare");
     setModalVisible(false);
   };
 
   const handleFindRoute = () => {
     if (!origin || !destination || origin === destination) return;
+    setSortMode("fare");
     setSearchResults(findMatchingRoutes(routes, origin, destination));
   };
 
@@ -534,42 +547,186 @@ export default function PlannerScreen() {
                     </Text>
                   </View>
                 ) : (
-                  <ScrollView style={{ maxHeight: 320 }}>
-                    {searchResults.map((match) => (
-                      <TouchableOpacity
-                        key={match.route.id}
-                        style={[
-                          styles.resultCard,
-                          { backgroundColor: colors.input },
-                        ]}
-                        onPress={() => handleSelectMatch(match)}
-                      >
-                        <View style={styles.resultCardHeader}>
-                          <Ionicons
-                            name="bus"
-                            size={16}
-                            color={colors.heading}
-                          />
+                  <>
+                    {searchResults.length > 1 && (
+                      <View style={styles.sortToggleRow}>
+                        <TouchableOpacity
+                          style={[
+                            styles.sortToggleButton,
+                            {
+                              backgroundColor:
+                                sortMode === "fare"
+                                  ? colors.heading
+                                  : colors.input,
+                            },
+                          ]}
+                          onPress={() => setSortMode("fare")}
+                        >
                           <Text
                             style={[
-                              styles.resultRouteName,
-                              { color: colors.text },
+                              styles.sortToggleText,
+                              {
+                                color:
+                                  sortMode === "fare" ? "#fff" : colors.text,
+                              },
                             ]}
                           >
-                            {match.route.name}
+                            {language === "en"
+                              ? "Cheapest first"
+                              : "Pinakamura muna"}
                           </Text>
-                        </View>
-                        <Text
+                        </TouchableOpacity>
+                        <TouchableOpacity
                           style={[
-                            styles.resultMeta,
-                            { color: colors.subtitle },
+                            styles.sortToggleButton,
+                            {
+                              backgroundColor:
+                                sortMode === "duration"
+                                  ? colors.heading
+                                  : colors.input,
+                            },
                           ]}
+                          onPress={() => setSortMode("duration")}
                         >
-                          ₱{match.route.fare} · {match.route.duration}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
+                          <Text
+                            style={[
+                              styles.sortToggleText,
+                              {
+                                color:
+                                  sortMode === "duration"
+                                    ? "#fff"
+                                    : colors.text,
+                              },
+                            ]}
+                          >
+                            {language === "en"
+                              ? "Fastest first"
+                              : "Pinakamabilis muna"}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    <ScrollView style={{ maxHeight: 320 }}>
+                      {(() => {
+                        // Cheapest/fastest badges are computed against the
+                        // FULL result set regardless of which sort is
+                        // currently active, so a route stays labeled
+                        // correctly no matter how the list is ordered.
+                        const cheapestFare = Math.min(
+                          ...searchResults.map((m) => m.route.fare),
+                        );
+                        const knownDurations = searchResults
+                          .map((m) => parseDurationMinutes(m.route.duration))
+                          .filter((d): d is number => d !== null);
+                        const fastestDuration =
+                          knownDurations.length > 0
+                            ? Math.min(...knownDurations)
+                            : null;
+
+                        const sorted = [...searchResults].sort((a, b) => {
+                          if (sortMode === "fare") {
+                            return a.route.fare - b.route.fare;
+                          }
+                          const da = parseDurationMinutes(a.route.duration);
+                          const db = parseDurationMinutes(b.route.duration);
+                          // Routes with unparseable duration text sink to
+                          // the bottom rather than breaking the sort.
+                          if (da === null && db === null) return 0;
+                          if (da === null) return 1;
+                          if (db === null) return -1;
+                          return da - db;
+                        });
+
+                        return sorted.map((match) => {
+                          const isCheapest = match.route.fare === cheapestFare;
+                          const matchDuration = parseDurationMinutes(
+                            match.route.duration,
+                          );
+                          const isFastest =
+                            fastestDuration !== null &&
+                            matchDuration === fastestDuration;
+
+                          return (
+                            <TouchableOpacity
+                              key={match.route.id}
+                              style={[
+                                styles.resultCard,
+                                { backgroundColor: colors.input },
+                              ]}
+                              onPress={() => handleSelectMatch(match)}
+                            >
+                              <View style={styles.resultCardHeader}>
+                                <Ionicons
+                                  name="bus"
+                                  size={16}
+                                  color={colors.heading}
+                                />
+                                <Text
+                                  style={[
+                                    styles.resultRouteName,
+                                    { color: colors.text },
+                                  ]}
+                                >
+                                  {match.route.name}
+                                </Text>
+                              </View>
+                              <Text
+                                style={[
+                                  styles.resultMeta,
+                                  { color: colors.subtitle },
+                                ]}
+                              >
+                                ₱{match.route.fare} · {match.route.duration}
+                              </Text>
+                              {(isCheapest || isFastest) && (
+                                <View style={styles.badgeRow}>
+                                  {isCheapest && (
+                                    <View
+                                      style={[
+                                        styles.matchBadge,
+                                        { backgroundColor: "#4caf5033" },
+                                      ]}
+                                    >
+                                      <Text
+                                        style={[
+                                          styles.matchBadgeText,
+                                          { color: "#4caf50" },
+                                        ]}
+                                      >
+                                        {language === "en"
+                                          ? "💰 Cheapest"
+                                          : "💰 Pinakamura"}
+                                      </Text>
+                                    </View>
+                                  )}
+                                  {isFastest && (
+                                    <View
+                                      style={[
+                                        styles.matchBadge,
+                                        { backgroundColor: "#5ba3e033" },
+                                      ]}
+                                    >
+                                      <Text
+                                        style={[
+                                          styles.matchBadgeText,
+                                          { color: "#5ba3e0" },
+                                        ]}
+                                      >
+                                        {language === "en"
+                                          ? "⚡ Fastest"
+                                          : "⚡ Pinakamabilis"}
+                                      </Text>
+                                    </View>
+                                  )}
+                                </View>
+                              )}
+                            </TouchableOpacity>
+                          );
+                        });
+                      })()}
+                    </ScrollView>
+                  </>
                 )}
               </>
             )}
@@ -800,5 +957,34 @@ const styles = StyleSheet.create({
   },
   resultMeta: {
     fontSize: 12,
+  },
+  sortToggleRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  sortToggleButton: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  sortToggleText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  badgeRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 8,
+  },
+  matchBadge: {
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  matchBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
   },
 });

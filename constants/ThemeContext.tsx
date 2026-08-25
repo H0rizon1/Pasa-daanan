@@ -21,7 +21,7 @@ type ThemeContextType = {
 
 const darkColors = {
   background: "#1a1a2e",
-  card: "#1d9e75",
+  card: "#5C6BC0",
   cardSecondary: "#16213e",
   heading: "#d85a30",
   text: "#ffffff",
@@ -34,7 +34,7 @@ const darkColors = {
 
 const lightColors = {
   background: "#F5F5F5",
-  card: "#1d9e75",
+  card: "#5C6BC0",
   cardSecondary: "#ffffff",
   heading: "#d85a30",
   text: "#1a1a2e",
