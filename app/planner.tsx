@@ -1,8 +1,11 @@
+import { addRecentTrip } from "@/constants/recentTrips";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
-import { useState } from "react";
+import { collection, getDocs } from "firebase/firestore";
+import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Modal,
   Platform,
   ScrollView,
@@ -11,22 +14,72 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { db } from "../constants/firebase";
 import { useLanguage } from "../constants/langcontext";
 import { useTheme } from "../constants/ThemeContext";
+
+type Stop = { name: string; lat?: number; lng?: number };
+
+type FirestoreRoute = {
+  id: string;
+  name: string;
+  type: string;
+  fare: number;
+  duration: string;
+  stops: Stop[];
+};
 
 type Trip = {
   id: string;
   origin: string;
   destination: string;
+  routeName: string;
+  fare: number;
+  duration: string;
   date: string;
   time: string;
 };
+
+type RouteMatch = {
+  route: FirestoreRoute;
+  originStop: Stop;
+  destinationStop: Stop;
+};
+
+function findMatchingRoutes(
+  routes: FirestoreRoute[],
+  origin: string,
+  destination: string,
+): RouteMatch[] {
+  const matches: RouteMatch[] = [];
+  for (const route of routes) {
+    const originIndex = route.stops.findIndex((s) => s.name === origin);
+    const destinationIndex = route.stops.findIndex(
+      (s) => s.name === destination,
+    );
+    if (
+      originIndex !== -1 &&
+      destinationIndex !== -1 &&
+      originIndex < destinationIndex
+    ) {
+      matches.push({
+        route,
+        originStop: route.stops[originIndex],
+        destinationStop: route.stops[destinationIndex],
+      });
+    }
+  }
+  return matches.sort((a, b) => a.route.fare - b.route.fare);
+}
 
 export default function PlannerScreen() {
   const { language } = useLanguage();
   const { theme, colors } = useTheme();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
+  const [routes, setRoutes] = useState<FirestoreRoute[]>([]);
+  const [loadingRoutes, setLoadingRoutes] = useState(true);
+
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -34,7 +87,33 @@ export default function PlannerScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
+  const [searchResults, setSearchResults] = useState<RouteMatch[] | null>(null);
+
   const dividerColor = theme === "dark" ? "#333333" : "#dddddd";
+
+  useEffect(() => {
+    fetchRoutes();
+  }, []);
+
+  const fetchRoutes = async () => {
+    try {
+      setLoadingRoutes(true);
+      const snapshot = await getDocs(collection(db, "routes"));
+      const fetched: FirestoreRoute[] = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as Omit<FirestoreRoute, "id">),
+      }));
+      setRoutes(fetched);
+    } catch (error) {
+      console.error("Error fetching routes for planner: ", error);
+    } finally {
+      setLoadingRoutes(false);
+    }
+  };
+
+  const stopNames = Array.from(
+    new Set(routes.flatMap((r) => r.stops.map((s) => s.name))),
+  ).sort((a, b) => a.localeCompare(b));
 
   const formatDate = (date: Date) =>
     date.toLocaleDateString("en-PH", {
@@ -49,46 +128,48 @@ export default function PlannerScreen() {
       minute: "2-digit",
     });
 
-  const addTrip = () => {
-    if (!origin || !destination) return;
-    const newTrip: Trip = {
-      id: Date.now().toString(),
-      origin,
-      destination,
-      date: formatDate(selectedDate),
-      time: formatTime(selectedTime),
-    };
-    setTrips((prev) => [newTrip, ...prev]);
+  const resetModal = () => {
     setOrigin("");
     setDestination("");
     setSelectedDate(new Date());
     setSelectedTime(new Date());
+    setSearchResults(null);
     setModalVisible(false);
+  };
+
+  const handleFindRoute = () => {
+    if (!origin || !destination || origin === destination) return;
+    setSearchResults(findMatchingRoutes(routes, origin, destination));
+  };
+
+  const handleSelectMatch = async (match: RouteMatch) => {
+    const newTrip: Trip = {
+      id: Date.now().toString(),
+      origin: match.originStop.name,
+      destination: match.destinationStop.name,
+      routeName: match.route.name,
+      fare: match.route.fare,
+      duration: match.route.duration,
+      date: formatDate(selectedDate),
+      time: formatTime(selectedTime),
+    };
+    setTrips((prev) => [newTrip, ...prev]);
+
+    addRecentTrip({
+      origin: match.originStop.name,
+      destination: match.destinationStop.name,
+      detail: match.route.name,
+      fare: match.route.fare,
+    }).catch((error) =>
+      console.error("Error logging recent trip from planner: ", error),
+    );
+
+    resetModal();
   };
 
   const deleteTrip = (id: string) => {
     setTrips((prev) => prev.filter((trip) => trip.id !== id));
   };
-
-  const locations = [
-    "Caloocan",
-    "Las Piñas",
-    "Makati",
-    "Malabon",
-    "Mandaluyong",
-    "Manila",
-    "Marikina",
-    "Muntinlupa",
-    "Navotas",
-    "Parañaque",
-    "Pasay",
-    "Pasig",
-    "Pateros",
-    "Quezon City",
-    "San Juan",
-    "Taguig",
-    "Valenzuela",
-  ];
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -146,6 +227,14 @@ export default function PlannerScreen() {
                     {trip.destination}
                   </Text>
                 </View>
+                <View style={styles.tripRouteRow}>
+                  <Ionicons name="bus" size={13} color={colors.heading} />
+                  <Text
+                    style={[styles.tripRouteText, { color: colors.heading }]}
+                  >
+                    {trip.routeName} · ₱{trip.fare} · {trip.duration}
+                  </Text>
+                </View>
                 <View style={styles.tripDateTime}>
                   <Ionicons
                     name="calendar-outline"
@@ -191,7 +280,7 @@ export default function PlannerScreen() {
         visible={modalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={resetModal}
       >
         <View style={styles.modalOverlay}>
           <View
@@ -200,130 +289,290 @@ export default function PlannerScreen() {
               { backgroundColor: colors.cardSecondary },
             ]}
           >
-            <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {language === "en" ? "Plan a Trip" : "Mag-plano ng Biyahe"}
-            </Text>
-
-            <Text style={[styles.inputLabel, { color: colors.text }]}>
-              {language === "en" ? "From" : "Mula sa"}
-            </Text>
-            <View
-              style={[
-                styles.pickerContainer,
-                { backgroundColor: colors.input },
-              ]}
-            >
-              <Picker
-                selectedValue={origin}
-                onValueChange={(value) => setOrigin(value)}
-                style={{ color: colors.text }}
-                dropdownIconColor={colors.heading}
-                mode="dropdown"
-              >
-                <Picker.Item label="Select current location..." value="" />
-                {locations.map((loc) => (
-                  <Picker.Item key={loc} label={loc} value={loc} />
-                ))}
-              </Picker>
-            </View>
-            <View
-              style={[
-                styles.pickerContainer,
-                { backgroundColor: colors.input },
-              ]}
-            >
-              <Picker
-                selectedValue={destination}
-                onValueChange={(value) => setDestination(value)}
-                style={{ color: colors.text }}
-                dropdownIconColor={colors.heading}
-                mode="dropdown"
-              >
-                <Picker.Item label="Select destination..." value="" />
-                {locations.map((loc) => (
-                  <Picker.Item key={loc} label={loc} value={loc} />
-                ))}
-              </Picker>
-            </View>
-
-            <View style={styles.dateTimeRow}>
-              <View style={styles.dateTimeBlock}>
-                <Text style={[styles.inputLabel, { color: colors.subtitle }]}>
-                  {language === "en" ? "Date" : "Petsa"}
+            {searchResults === null ? (
+              <>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                  {language === "en" ? "Plan a Trip" : "Mag-plano ng Biyahe"}
                 </Text>
-                <TouchableOpacity
-                  style={[
-                    styles.dateTimeButton,
-                    { backgroundColor: colors.input },
-                  ]}
-                  onPress={() => setShowDatePicker(true)}
-                >
-                  <Ionicons name="calendar-outline" size={16} color="#e94560" />
-                  <Text style={[styles.dateTimeText, { color: colors.text }]}>
-                    {formatDate(selectedDate)}
+
+                {loadingRoutes ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={colors.heading}
+                    style={{ marginVertical: 12 }}
+                  />
+                ) : (
+                  <>
+                    <Text
+                      style={[styles.inputLabel, { color: colors.subtitle }]}
+                    >
+                      {language === "en" ? "From" : "Mula sa"}
+                    </Text>
+                    <View
+                      style={[
+                        styles.pickerContainer,
+                        { backgroundColor: colors.input },
+                      ]}
+                    >
+                      <Picker
+                        selectedValue={origin}
+                        onValueChange={(value) => setOrigin(value)}
+                        style={{ color: colors.text }}
+                        dropdownIconColor={colors.heading}
+                        mode="dropdown"
+                      >
+                        <Picker.Item
+                          label={
+                            language === "en"
+                              ? "Select a stop..."
+                              : "Pumili ng himpilan..."
+                          }
+                          value=""
+                        />
+                        {stopNames.map((name) => (
+                          <Picker.Item key={name} label={name} value={name} />
+                        ))}
+                      </Picker>
+                    </View>
+
+                    <Text
+                      style={[styles.inputLabel, { color: colors.subtitle }]}
+                    >
+                      {language === "en" ? "To" : "Hanggang sa"}
+                    </Text>
+                    <View
+                      style={[
+                        styles.pickerContainer,
+                        { backgroundColor: colors.input },
+                      ]}
+                    >
+                      <Picker
+                        selectedValue={destination}
+                        onValueChange={(value) => setDestination(value)}
+                        style={{ color: colors.text }}
+                        dropdownIconColor={colors.heading}
+                        mode="dropdown"
+                      >
+                        <Picker.Item
+                          label={
+                            language === "en"
+                              ? "Select a stop..."
+                              : "Pumili ng himpilan..."
+                          }
+                          value=""
+                        />
+                        {stopNames.map((name) => (
+                          <Picker.Item key={name} label={name} value={name} />
+                        ))}
+                      </Picker>
+                    </View>
+
+                    <View style={styles.dateTimeRow}>
+                      <View style={styles.dateTimeBlock}>
+                        <Text
+                          style={[
+                            styles.inputLabel,
+                            { color: colors.subtitle },
+                          ]}
+                        >
+                          {language === "en" ? "Date" : "Petsa"}
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.dateTimeButton,
+                            { backgroundColor: colors.input },
+                          ]}
+                          onPress={() => setShowDatePicker(true)}
+                        >
+                          <Ionicons
+                            name="calendar-outline"
+                            size={16}
+                            color="#e94560"
+                          />
+                          <Text
+                            style={[
+                              styles.dateTimeText,
+                              { color: colors.text },
+                            ]}
+                          >
+                            {formatDate(selectedDate)}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={styles.dateTimeBlock}>
+                        <Text
+                          style={[
+                            styles.inputLabel,
+                            { color: colors.subtitle },
+                          ]}
+                        >
+                          {language === "en" ? "Time" : "Oras"}
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.dateTimeButton,
+                            { backgroundColor: colors.input },
+                          ]}
+                          onPress={() => setShowTimePicker(true)}
+                        >
+                          <Ionicons
+                            name="time-outline"
+                            size={16}
+                            color="#e94560"
+                          />
+                          <Text
+                            style={[
+                              styles.dateTimeText,
+                              { color: colors.text },
+                            ]}
+                          >
+                            {formatTime(selectedTime)}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {showDatePicker && (
+                      <DateTimePicker
+                        value={selectedDate}
+                        mode="date"
+                        display={Platform.OS === "ios" ? "spinner" : "default"}
+                        minimumDate={new Date()}
+                        onChange={(event, date) => {
+                          setShowDatePicker(false);
+                          if (date) setSelectedDate(date);
+                        }}
+                      />
+                    )}
+
+                    {showTimePicker && (
+                      <DateTimePicker
+                        value={selectedTime}
+                        mode="time"
+                        display={Platform.OS === "ios" ? "spinner" : "default"}
+                        onChange={(event, time) => {
+                          setShowTimePicker(false);
+                          if (time) setSelectedTime(time);
+                        }}
+                      />
+                    )}
+
+                    <View style={styles.modalButtons}>
+                      <TouchableOpacity
+                        style={[
+                          styles.cancelButton,
+                          { backgroundColor: colors.input },
+                        ]}
+                        onPress={resetModal}
+                      >
+                        <Text
+                          style={[
+                            styles.cancelText,
+                            { color: colors.subtitle },
+                          ]}
+                        >
+                          {language === "en" ? "Cancel" : "Kanselahin"}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.confirmButton,
+                          (!origin || !destination || origin === destination) &&
+                            styles.confirmButtonDisabled,
+                        ]}
+                        onPress={handleFindRoute}
+                        disabled={
+                          !origin || !destination || origin === destination
+                        }
+                      >
+                        <Text style={styles.confirmText}>
+                          {language === "en" ? "Find Route" : "Hanapin"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <View style={styles.resultsHeader}>
+                  <TouchableOpacity
+                    onPress={() => setSearchResults(null)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="arrow-back" size={22} color={colors.text} />
+                  </TouchableOpacity>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>
+                    {origin} → {destination}
                   </Text>
-                </TouchableOpacity>
-              </View>
+                </View>
 
-              <View style={styles.dateTimeBlock}>
-                <Text style={[styles.inputLabel, { color: colors.subtitle }]}>
-                  {language === "en" ? "Time" : "Oras"}
-                </Text>
-                <TouchableOpacity
-                  style={[
-                    styles.dateTimeButton,
-                    { backgroundColor: colors.input },
-                  ]}
-                  onPress={() => setShowTimePicker(true)}
-                >
-                  <Ionicons name="time-outline" size={16} color="#e94560" />
-                  <Text style={[styles.dateTimeText, { color: colors.text }]}>
-                    {formatTime(selectedTime)}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {showDatePicker && (
-              <DateTimePicker
-                value={selectedDate}
-                mode="date"
-                display={Platform.OS === "ios" ? "spinner" : "default"}
-                minimumDate={new Date()}
-                onChange={(event, date) => {
-                  setShowDatePicker(false);
-                  if (date) setSelectedDate(date);
-                }}
-              />
+                {searchResults.length === 0 ? (
+                  <View style={styles.noResults}>
+                    <Ionicons
+                      name="alert-circle-outline"
+                      size={40}
+                      color={colors.subtitle}
+                    />
+                    <Text
+                      style={[styles.noResultsText, { color: colors.text }]}
+                    >
+                      {language === "en"
+                        ? "No direct route found between these stops."
+                        : "Walang direktang ruta sa pagitan ng mga himpilang ito."}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.noResultsSubtext,
+                        { color: colors.subtitle },
+                      ]}
+                    >
+                      {language === "en"
+                        ? "Try a different pair of stops, or check back as more routes get added."
+                        : "Subukan ang ibang himpilan, o bumalik kapag may dagdag na ruta."}
+                    </Text>
+                  </View>
+                ) : (
+                  <ScrollView style={{ maxHeight: 320 }}>
+                    {searchResults.map((match) => (
+                      <TouchableOpacity
+                        key={match.route.id}
+                        style={[
+                          styles.resultCard,
+                          { backgroundColor: colors.input },
+                        ]}
+                        onPress={() => handleSelectMatch(match)}
+                      >
+                        <View style={styles.resultCardHeader}>
+                          <Ionicons
+                            name="bus"
+                            size={16}
+                            color={colors.heading}
+                          />
+                          <Text
+                            style={[
+                              styles.resultRouteName,
+                              { color: colors.text },
+                            ]}
+                          >
+                            {match.route.name}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[
+                            styles.resultMeta,
+                            { color: colors.subtitle },
+                          ]}
+                        >
+                          ₱{match.route.fare} · {match.route.duration}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+              </>
             )}
-
-            {showTimePicker && (
-              <DateTimePicker
-                value={selectedTime}
-                mode="time"
-                display={Platform.OS === "ios" ? "spinner" : "default"}
-                onChange={(event, time) => {
-                  setShowTimePicker(false);
-                  if (time) setSelectedTime(time);
-                }}
-              />
-            )}
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.cancelButton, { backgroundColor: colors.input }]}
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={[styles.cancelText, { color: colors.subtitle }]}>
-                  {language === "en" ? "Cancel" : "Kanselahin"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmButton} onPress={addTrip}>
-                <Text style={styles.confirmText}>
-                  {language === "en" ? "Add Trip" : "Idagdag"}
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </Modal>
@@ -406,10 +655,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
   },
-  tripDateTime: {
+  tripRouteRow: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: 8,
+    gap: 6,
+  },
+  tripRouteText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  tripDateTime: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 6,
     gap: 4,
   },
   tripDateText: {
@@ -446,8 +705,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "bold",
+  },
+  resultsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     marginBottom: 8,
   },
   inputLabel: {
@@ -493,6 +757,9 @@ const styles = StyleSheet.create({
     padding: 14,
     alignItems: "center",
   },
+  confirmButtonDisabled: {
+    opacity: 0.5,
+  },
   confirmText: {
     color: "#fff",
     fontWeight: "bold",
@@ -501,5 +768,37 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 8,
     overflow: "hidden",
+  },
+  noResults: {
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 24,
+  },
+  noResultsText: {
+    fontSize: 15,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  noResultsSubtext: {
+    fontSize: 13,
+    textAlign: "center",
+  },
+  resultCard: {
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+  },
+  resultCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 4,
+  },
+  resultRouteName: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  resultMeta: {
+    fontSize: 12,
   },
 });
