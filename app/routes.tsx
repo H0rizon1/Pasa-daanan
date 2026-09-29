@@ -51,6 +51,7 @@ export default function RoutesScreen() {
         console.log(doc.id, doc.data());
         data.push({ id: doc.id, ...doc.data() } as Route);
       });
+      data.sort((a, b) => a.name.localeCompare(b.name));
       setRoutes(data);
     } catch (error) {
       console.error("Error fetching routes: ", error);

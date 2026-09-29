@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { Text } from "react-native";
 import { LanguageProvider } from "../constants/langcontext";
 import { ThemeProvider, useTheme } from "../constants/ThemeContext";
 
@@ -64,7 +65,7 @@ function ThemeTabs() {
           options={{
             title: "Compare",
             tabBarIcon: ({ color }) => (
-              <Ionicons name="wallet" size={22} color={color} />
+              <Text style={{ fontSize: 20, fontWeight: "bold", color }}>₱</Text>
             ),
           }}
         />

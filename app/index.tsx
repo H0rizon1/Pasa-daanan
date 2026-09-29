@@ -3,10 +3,10 @@ import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
 import { useCallback, useState } from "react";
 import {
+  Image,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -26,9 +26,6 @@ export default function HomeScreen() {
   const loadRecentTrips = useCallback(() => {
     getRecentTrips().then(setRecentTrips);
   }, []);
-
-  // Refresh every time the Home screen comes back into focus, so a trip
-  // selected on the Map screen shows up here right away.
   useFocusEffect(
     useCallback(() => {
       loadRecentTrips();
@@ -83,28 +80,22 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
-        <Text style={[styles.title, { color: colors.heading }]}>
-          Pasa-daanan
-        </Text>
+        <View style={styles.titleRow}>
+          <Image
+            source={
+              theme === "dark"
+                ? require("../assets/images/darkbg.png")
+                : require("../assets/images/lightbg2.jpg")
+            }
+            style={styles.logo}
+          />
+          <Text style={[styles.title, { color: colors.heading }]}>
+            Pasa-daanan
+          </Text>
+        </View>
         <Text style={[styles.subtitle, { color: colors.subtitle }]}>
           {t.app}
         </Text>
-      </View>
-
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={[
-            styles.searchInput,
-            { backgroundColor: colors.input, color: colors.text },
-          ]}
-          placeholder={t.search}
-          placeholderTextColor={colors.placeholder}
-        />
-        <TouchableOpacity
-          style={[styles.searchButton, { backgroundColor: colors.heading }]}
-        >
-          <Text style={styles.searchButtonText}>Go</Text>
-        </TouchableOpacity>
       </View>
 
       <Text style={[styles.sectionTitle, { color: colors.text }]}>
@@ -231,26 +222,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   langToggleText: { fontSize: 14 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  logo: { width: 48, height: 48, resizeMode: "contain" },
   title: { fontSize: 42, fontWeight: "bold" },
   subtitle: { fontSize: 14, marginTop: 4 },
-  searchContainer: {
-    flexDirection: "row",
-    marginHorizontal: 24,
-    marginBottom: 24,
-  },
-  searchInput: {
-    flex: 1,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-    marginRight: 10,
-  },
-  searchButton: {
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    justifyContent: "center",
-  },
-  searchButtonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
@@ -260,6 +235,7 @@ const styles = StyleSheet.create({
   quickActions: {
     flexDirection: "row",
     flexWrap: "wrap",
+    justifyContent: "center",
     marginHorizontal: 24,
     gap: 12,
     marginBottom: 24,

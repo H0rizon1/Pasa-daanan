@@ -3,16 +3,16 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLanguage } from "../constants/langcontext";
 import { useTheme } from "../constants/ThemeContext";
 
-const FARE_DATA = [
-  { key: "jeep", icon: "bus-outline", cost: 13, color: "#4caf50" },
-  { key: "bus", icon: "bus", cost: 30, color: "#2e9e5b" },
-  { key: "p2p", icon: "car-sport", cost: 150, color: "#5ba3e0" },
-  { key: "moveit", icon: "bicycle", cost: 65, color: "#f2a541" },
-  { key: "taxi", icon: "car", cost: 250, color: "#e94560" },
+const MODES = [
+  { key: "jeep", icon: "bus-outline", color: "#4caf50", fare: 13, minutes: 45 },
+  { key: "bus", icon: "bus", color: "#2e9e5b", fare: 30, minutes: 40 },
+  { key: "p2p", icon: "car-sport", color: "#5ba3e0", fare: 150, minutes: 35 },
+  { key: "moveit", icon: "bicycle", color: "#f2a541", fare: 65, minutes: 25 },
+  { key: "taxi", icon: "car", color: "#e94560", fare: 250, minutes: 42 },
 ] as const;
 
-const FARE_LABELS: Record<
-  (typeof FARE_DATA)[number]["key"],
+const MODE_LABELS: Record<
+  (typeof MODES)[number]["key"],
   { en: string; fil: string }
 > = {
   jeep: { en: "Jeepney", fil: "Dyip" },
@@ -22,10 +22,63 @@ const FARE_LABELS: Record<
   taxi: { en: "Taxi / Grab", fil: "Taxi / Grab" },
 };
 
+function formatMinutes(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours > 0 && mins > 0) return `${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${mins} min`;
+}
+
 export default function CompareScreen() {
   const { language } = useLanguage();
   const { colors } = useTheme();
-  const maxCost = Math.max(...FARE_DATA.map((f) => f.cost));
+  const maxFare = Math.max(...MODES.map((m) => m.fare));
+  const maxMinutes = Math.max(...MODES.map((m) => m.minutes));
+
+  const renderChart = (
+    title: string,
+    caption: string,
+    getValue: (m: (typeof MODES)[number]) => number,
+    maxValue: number,
+    formatValue: (v: number) => string,
+  ) => (
+    <View style={[styles.chartCard, { backgroundColor: colors.cardSecondary }]}>
+      <Text style={[styles.chartTitle, { color: colors.text }]}>{title}</Text>
+      <Text style={[styles.chartCaption, { color: colors.subtitle }]}>
+        {caption}
+      </Text>
+
+      {MODES.map((item) => {
+        const value = getValue(item);
+        const barWidthPct = (value / maxValue) * 100;
+        const label = MODE_LABELS[item.key][language === "en" ? "en" : "fil"];
+        return (
+          <View key={item.key} style={styles.barRow}>
+            <View style={styles.barLabelRow}>
+              <Ionicons name={item.icon as any} size={16} color={item.color} />
+              <Text style={[styles.barLabel, { color: colors.text }]}>
+                {label}
+              </Text>
+              <Text style={[styles.barCost, { color: colors.text }]}>
+                {formatValue(value)}
+              </Text>
+            </View>
+            <View
+              style={[styles.barTrack, { backgroundColor: colors.background }]}
+            >
+              <View
+                style={[
+                  styles.barFill,
+                  { width: `${barWidthPct}%`, backgroundColor: item.color },
+                ]}
+              />
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
 
   return (
     <ScrollView
@@ -37,8 +90,8 @@ export default function CompareScreen() {
         </Text>
         <Text style={[styles.subtitle, { color: colors.subtitle }]}>
           {language === "en"
-            ? "See how fares stack up across your options"
-            : "Ihambing ang pamasahe sa iba't ibang paraan ng byahe"}
+            ? "See how fares and travel time stack up across your options"
+            : "Ihambing ang pamasahe at oras ng byahe sa iba't ibang paraan"}
         </Text>
       </View>
 
@@ -51,53 +104,27 @@ export default function CompareScreen() {
         </Text>
       </View>
 
-      <View
-        style={[styles.chartCard, { backgroundColor: colors.cardSecondary }]}
-      >
-        <Text style={[styles.chartTitle, { color: colors.text }]}>
-          {language === "en" ? "Fare by Mode" : "Pamasahe kada Sasakyan"}
-        </Text>
-        <Text style={[styles.chartCaption, { color: colors.subtitle }]}>
-          {language === "en"
-            ? "Reference fares for a typical trip of this distance. Actual fares vary."
-            : "Sanggunian na pamasahe para sa karaniwang biyaheng ganito ang layo. Maaaring mag-iba ang aktwal na pamasahe."}
-        </Text>
+      {renderChart(
+        language === "en" ? "Fare by Mode" : "Pamasahe kada Sasakyan",
+        language === "en"
+          ? "Reference fares for a typical trip of this distance. Actual fares vary."
+          : "Sanggunian na pamasahe para sa karaniwang biyaheng ganito ang layo. Maaaring mag-iba ang aktwal na pamasahe.",
+        (m) => m.fare,
+        maxFare,
+        (v) => `₱${v}`,
+      )}
 
-        {FARE_DATA.map((item) => {
-          const barWidthPct = (item.cost / maxCost) * 100;
-          const label = FARE_LABELS[item.key][language === "en" ? "en" : "fil"];
-          return (
-            <View key={item.key} style={styles.barRow}>
-              <View style={styles.barLabelRow}>
-                <Ionicons
-                  name={item.icon as any}
-                  size={16}
-                  color={item.color}
-                />
-                <Text style={[styles.barLabel, { color: colors.text }]}>
-                  {label}
-                </Text>
-                <Text style={[styles.barCost, { color: colors.text }]}>
-                  ₱{item.cost}
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.barTrack,
-                  { backgroundColor: colors.background },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.barFill,
-                    { width: `${barWidthPct}%`, backgroundColor: item.color },
-                  ]}
-                />
-              </View>
-            </View>
-          );
-        })}
-      </View>
+      {renderChart(
+        language === "en"
+          ? "Travel Time by Mode"
+          : "Oras ng Byahe kada Sasakyan",
+        language === "en"
+          ? "Reference travel time for a typical trip of this distance, including usual traffic. Actual time varies."
+          : "Sanggunian na oras ng byahe para sa karaniwang biyaheng ganito ang layo, kasama ang karaniwang trapiko. Maaaring mag-iba ang aktwal na oras.",
+        (m) => m.minutes,
+        maxMinutes,
+        formatMinutes,
+      )}
     </ScrollView>
   );
 }
