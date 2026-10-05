@@ -19,8 +19,8 @@ import {
 import { useTheme } from "../constants/ThemeContext";
 
 export default function HomeScreen() {
-  const { t, language, toggleLanguage } = useLanguage();
-  const { theme, toggleTheme, colors } = useTheme();
+  const { t, language } = useLanguage();
+  const { theme, colors } = useTheme();
   const [recentTrips, setRecentTrips] = useState<RecentTrip[]>([]);
 
   const loadRecentTrips = useCallback(() => {
@@ -49,37 +49,6 @@ export default function HomeScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
     >
       <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <Text style={[styles.greeting, { color: colors.subtitle }]}>
-            {getGreeting()}
-          </Text>
-          <View style={styles.toggleRow}>
-            <TouchableOpacity
-              style={[
-                styles.toggleButton,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-              onPress={toggleTheme}
-            >
-              <Ionicons
-                name={theme === "dark" ? "sunny" : "moon"}
-                size={16}
-                color={colors.heading}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.toggleButton,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-              onPress={toggleLanguage}
-            >
-              <Text style={[styles.langToggleText, { color: colors.text }]}>
-                {language === "en" ? "🇵🇭" : "🇬🇧"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
         <View style={styles.titleRow}>
           <Image
             source={

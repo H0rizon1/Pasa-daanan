@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Text } from "react-native";
+import HeaderToggles from "../constants/HeaderToggles";
 import { LanguageProvider } from "../constants/langcontext";
 import { ThemeProvider, useTheme } from "../constants/ThemeContext";
 
@@ -22,6 +23,7 @@ function ThemeTabs() {
           tabBarInactiveTintColor: colors.subtitle,
           headerStyle: { backgroundColor: colors.cardSecondary },
           headerTintColor: colors.text,
+          headerRight: () => <HeaderToggles />,
         }}
       >
         <Tabs.Screen
